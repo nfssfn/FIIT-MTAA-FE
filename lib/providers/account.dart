@@ -14,7 +14,12 @@ class AccountProvider with ChangeNotifier {
   final ImagePicker _picker = ImagePicker();
 
   set token(token) {
-    decriptedToken = Jwt.parseJwt(token);
+    if (token == null) {
+      decriptedToken = {};
+      httpClient.reset();
+    } else {
+      decriptedToken = Jwt.parseJwt(token);
+    }
   }
 
   get token {
@@ -68,6 +73,7 @@ class AccountProvider with ChangeNotifier {
       if (cookie != null && cookie.isNotEmpty) {
         Cookie token = Cookie.fromSetCookieValue(cookie);
         httpClient.cachedToken = token.value;
+        this.token = token.value;
       }
 
       return { 'status': true };
@@ -80,6 +86,7 @@ class AccountProvider with ChangeNotifier {
     final response = await httpClient.delete(Uri.parse(Config.deleteAccount));
 
     if (response.statusCode == 200) {
+      decriptedToken = {};
       httpClient.reset();
 
       return { 'status': true };

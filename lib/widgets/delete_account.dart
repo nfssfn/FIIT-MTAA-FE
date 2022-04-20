@@ -1,3 +1,4 @@
+import 'package:fiit_mtaa_fe/pages/login.dart';
 import 'package:fiit_mtaa_fe/providers/account.dart';
 import 'package:fiit_mtaa_fe/widgets/snack_bar.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +22,11 @@ class _DeleteAccountWidgetState extends State<DeleteAccountWidget> {
       final response = await account.deleteAccount();
 
       if (response['status']) {
-        Navigator.popUntil(context, ModalRoute.withName('/'));
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const Login()),
+          (Route<dynamic> route) => false
+        );
         showSnackBar(context, 'Successfully deleted account');
       } else {
         Navigator.of(context).pop();

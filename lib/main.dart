@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => GameProvider()),
       ],
       child: MaterialApp(
-        title: 'Mafia',
+        title: 'Mafia Role Game',
         routes: {
           '/games': (context) => const Games(),
         },

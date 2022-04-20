@@ -24,6 +24,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>CFBundleName</key>
+	<string>Mafia Role Game</string>
 	<key>NSCameraUsageDescription</key>
 	<string>FIIT-MTAA-FE Camera Usage!</string>
 	<key>NSMicrophoneUsageDescription</key>

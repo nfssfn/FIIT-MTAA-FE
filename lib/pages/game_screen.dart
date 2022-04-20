@@ -21,17 +21,14 @@ class _GameScreenState extends State<GameScreen> {
   GameProvider? game;
   AccountProvider? account;
   final _localVideoRenderer = RTCVideoRenderer();
-  final _remoteVideoRenderer = RTCVideoRenderer();
-  final sdpController = TextEditingController();
-
-  bool _offer = false;
-
-  RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
 
   initRenderer() async {
     await _localVideoRenderer.initialize();
-    await _remoteVideoRenderer.initialize();
+    for (var entry in game!.rtc.entries) {
+      await entry.value['renderer'].initialize();
+    }
+    // await _remoteVideoRenderer.initialize();
   }
 
   _getUserMedia() async {
@@ -49,10 +46,13 @@ class _GameScreenState extends State<GameScreen> {
     return stream;
   }
 
-  _createPeerConnecion() async {
+  _createPeerConnecion(username, value) async {
     Map<String, dynamic> configuration = {
       'iceServers': [
         {'url': 'stun:stun.l.google.com:19302'},
+        // {'url': 'stun:stun1.l.google.com:19302'},
+        // {'url': 'stun:stun2.l.google.com:19302'},
+        // {'url': 'stun:stun3.l.google.com:19302'},
       ]
     };
 
@@ -64,7 +64,9 @@ class _GameScreenState extends State<GameScreen> {
       'optional': [],
     };
 
-    _localStream = await _getUserMedia();
+    if (_localStream == null)
+      _localStream = await _getUserMedia();
+      _toggleMute(false);
 
     RTCPeerConnection pc =
         await createPeerConnection(configuration, offerSdpConstraints);
@@ -72,80 +74,71 @@ class _GameScreenState extends State<GameScreen> {
     pc.addStream(_localStream!);
 
     pc.onIceCandidate = (e) {
+      print('candidate for ${username} ${value['type']}');
+      // if (e.candidate != null && value['type'] == 'listen') {
       if (e.candidate != null) {
-        print('canditade');
-        // print(json.encode({
-        //   'candidate': e.candidate.toString(),
-        //   'sdpMid': e.sdpMid.toString(),
-        //   'sdpMlineIndex': e.sdpMLineIndex,
-        // }));
+        game?.sendRtc(
+          username,
+          account?.token['username'],
+          'candidate',
+          json.encode({
+            'candidate': e.candidate.toString(),
+            'sdpMid': e.sdpMid.toString(),
+            'sdpMlineIndex': e.sdpMLineIndex,
+          })
+        );
       }
     };
 
     pc.onIceConnectionState = (e) {
-      print(e);
+      // print(e);
     };
 
     pc.onAddStream = (stream) {
-      print('addStream: ' + stream.id);
-      _remoteVideoRenderer.srcObject = stream;
+      value['renderer'].srcObject = stream;
     };
 
     return pc;
   }
 
-  void _createOffer() async {
+  void _createOffer(username, value) async {
     RTCSessionDescription description =
-        await _peerConnection!.createOffer({'offerToReceiveVideo': 1});
+        await value['peerConnection']!.createOffer({'offerToReceiveVideo': 1});
     var session = parse(description.sdp.toString());
-    game?.usersInLobby.forEach((username) {
-      if (account?.token['username'] != username) {
-        game?.sendRtc(username, account?.token['username'], json.encode(session));
-      }
-    });
-    _offer = true;
+    game?.sendRtc(username, account?.token['username'], 'sdp', json.encode(session));
 
-    _peerConnection!.setLocalDescription(description);
+    value['peerConnection']!.setLocalDescription(description);
   }
 
-  void _createAnswer() async {
+  void _createAnswer(username, value) async {
     RTCSessionDescription description =
-        await _peerConnection!.createAnswer({'offerToReceiveVideo': 1});
+        await value['peerConnection']!.createAnswer({'offerToReceiveVideo': 1});
 
     var session = parse(description.sdp.toString());
-    // print(json.encode(session));
-    game?.usersInLobby.forEach((username) {
-      if (account?.token['username'] != username) {
-        game?.sendRtc(username, account?.token['username'], json.encode(session));
-      }
-    });
+    game?.sendRtc(username, account?.token['username'], 'sdp', json.encode(session));
 
-    _peerConnection!.setLocalDescription(description);
+    value['peerConnection']!.setLocalDescription(description);
   }
 
-  void _setRemoteDescription() async {
-    String jsonString = sdpController.text;
-    // String jsonString = game?.rtcInvite;
+  _setRemoteDescription(username, value) async {
+    print(value.toString());
+    String jsonString = value['sdp'];
     dynamic session = await jsonDecode(jsonString);
 
     String sdp = write(session, null);
 
     RTCSessionDescription description =
-        RTCSessionDescription(sdp, _offer ? 'answer' : 'offer');
-    // print(description.toMap());
+        RTCSessionDescription(sdp, value['type'] == 'send' ? 'answer' : 'offer');
 
-    await _peerConnection!.setRemoteDescription(description);
-    _createAnswer();
+    await value['peerConnection']!.setRemoteDescription(description);
   }
 
-  void _addCandidate() async {
-    // String jsonString = game?.rtcInvite;
-    String jsonString = sdpController.text;
+  void _addCandidate(value) async {
+    String jsonString = value['candidate'];
     dynamic session = await jsonDecode(jsonString);
-    // print(session['candidate']);
     dynamic candidate = RTCIceCandidate(
         session['candidate'], session['sdpMid'], session['sdpMlineIndex']);
-    await _peerConnection!.addCandidate(candidate);
+    await value['peerConnection']!.addCandidate(candidate);
   }
 
   @override
@@ -158,18 +151,22 @@ class _GameScreenState extends State<GameScreen> {
       game?.addListener(_onDisconnect, ['disconnect']);
       game?.addListener(_onGameOver, ['game-over']);
       game?.addListener(_onSheriffCheck, ['game-sheriff-check']);
-      game?.addListener(_onRtcRcv, ['rtc-rcv']);
       game?.addListener(_onGiveWord, ['give-word']);
       game?.addListener(_onNight, ['game-night']);
-    game?.addListener(_onVoting, ['game-voting']);
-    });
+      game?.addListener(_onHideAll, ['hide-all']);
+      game?.addListener(_onVoting, ['game-voting']);
+      game?.addListener(_onSdpRcv, ['sdp-rcv']);
+      game?.addListener(_onCandidateRcv, ['candidate-rcv']);
+      game?.addListener(_onStartRtc, ['start-rtc']);
 
-    initRenderer();
-    _createPeerConnecion().then((pc) {
-      _peerConnection = pc;
+      await initRenderer();
+
+      game?.rtc.forEach((username, value) {
+        _createPeerConnecion(username, value).then((pc) {
+          value['peerConnection'] = pc;
+        });
+      });
     });
-    _getUserMedia();
-    setState(() {});
   }
 
   @override
@@ -177,19 +174,26 @@ class _GameScreenState extends State<GameScreen> {
     super.didUpdateWidget(gameScreen);
 
     game?.removeListener(_onDisconnect, ['disconnect']);
-    game?.addListener(_onDisconnect, ['disconnect']);
     game?.removeListener(_onGameOver, ['game-over']);
+    game?.removeListener(_onSheriffCheck, ['game-sheriff-check']);
+    game?.removeListener(_onGiveWord, ['give-word']);
+    game?.removeListener(_onNight, ['game-night']);
+    game?.removeListener(_onHideAll, ['hide-all']);
+    game?.removeListener(_onVoting, ['game-voting']);
+    game?.removeListener(_onSdpRcv, ['sdp-rcv']);
+    game?.removeListener(_onCandidateRcv, ['candidate-rcv']);
+    game?.removeListener(_onStartRtc, ['start-rtc']);
+
+    game?.addListener(_onDisconnect, ['disconnect']);
     game?.addListener(_onGameOver, ['game-over']);
     game?.addListener(_onSheriffCheck, ['game-sheriff-check']);
-    game?.removeListener(_onSheriffCheck, ['game-sheriff-check']);
-    game?.addListener(_onRtcRcv, ['rtc-rcv']);
-    game?.removeListener(_onRtcRcv, ['rtc-rcv']);
     game?.addListener(_onGiveWord, ['give-word']);
-    game?.removeListener(_onGiveWord, ['give-word']);
     game?.addListener(_onNight, ['game-night']);
-    game?.removeListener(_onNight, ['game-night']);
+    game?.addListener(_onHideAll, ['hide-all']);
     game?.addListener(_onVoting, ['game-voting']);
-    game?.removeListener(_onVoting, ['game-voting']);
+    game?.addListener(_onSdpRcv, ['sdp-rcv']);
+    game?.addListener(_onCandidateRcv, ['candidate-rcv']);
+    game?.addListener(_onStartRtc, ['start-rtc']);
   }
 
   @override
@@ -199,13 +203,52 @@ class _GameScreenState extends State<GameScreen> {
     game?.removeListener(_onDisconnect, ['disconnect']);
     game?.removeListener(_onGameOver, ['game-over']);
     game?.removeListener(_onSheriffCheck, ['game-sheriff-check']);
-    game?.removeListener(_onRtcRcv, ['rtc-rcv']);
     game?.removeListener(_onGiveWord, ['give-word']);
     game?.removeListener(_onNight, ['game-night']);
+    game?.removeListener(_onHideAll, ['hide-all']);
     game?.removeListener(_onVoting, ['game-voting']);
+    game?.removeListener(_onSdpRcv, ['sdp-rcv']);
+    game?.removeListener(_onCandidateRcv, ['candidate-rcv']);
+    game?.removeListener(_onStartRtc, ['start-rtc']);
     game?.leaveRoom();
+
+    _localVideoRenderer.srcObject = null;
+    _localStream?.getTracks().forEach((track) {
+      track.stop();
+    });
+    _localStream?.dispose();
     await _localVideoRenderer.dispose();
-    sdpController.dispose();
+
+    game?.rtc.forEach((username, value) {
+      value['peerConnection'].dispose();
+    });
+    game?.rtc = {};
+  }
+
+  _onStartRtc() {
+    game?.rtc.forEach((username, value) {
+      if (value['type'] == 'send') {
+        _createOffer(username, value);
+      }
+    });
+  }
+
+  _onSdpRcv() async {
+    final username = game?.sdpQeue.removeAt(0);
+    print('sdp rcv: ' + username);
+
+    await _setRemoteDescription(username, game?.rtc[username]);
+    if (game?.rtc[username]['type'] == 'listen') {
+      _createAnswer(username, game?.rtc[username]);
+    }
+  }
+
+  _onCandidateRcv() {
+    final username = game?.candidateQeue.removeAt(0);
+    print('candidate rcv: ' + username);
+
+    // if (game?.rtc[username]['type'] == 'send')
+      _addCandidate(game?.rtc[username]);
   }
 
   _onVoting() {
@@ -214,6 +257,7 @@ class _GameScreenState extends State<GameScreen> {
 
   _onNight() {
     showSnackBar(context, 'Night started');
+    _toggleMute(false);
   }
 
   _onGiveWord() {
@@ -221,15 +265,10 @@ class _GameScreenState extends State<GameScreen> {
     if (giveWord != null) {
       showSnackBar(context, '$giveWord can speak now');
     }
-  }
-
-  _onRtcRcv() {
-    sdpController.text = game?.rtcInvite;
-    // _offer ? 'answer' : 'offer'
-    if (_offer) {
-      _setRemoteDescription();
+    if (giveWord == account?.token['username']) {
+      _toggleMute(true);
     } else {
-      _addCandidate();
+      _toggleMute(false);
     }
   }
 
@@ -249,16 +288,22 @@ class _GameScreenState extends State<GameScreen> {
     showSnackBar(context, 'Player that was checked is ${Config.roles[game!.sheriffCheck]}');
   }
 
+  _onHideAll() {
+    _toggleMute(false);
+  }
+
+  _toggleMute([bool? value]) {
+    if (value != null)
+      _localStream!.getAudioTracks()[0].enabled = value;
+    else
+      _localStream!.getAudioTracks()[0].enabled = !_localStream!.getAudioTracks()[0].enabled;
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     GameProvider game = Provider.of<GameProvider>(context);
     AccountProvider account = Provider.of<AccountProvider>(context);
-
-    String role = game.role;
-
-    if (['MAF', 'CIV', 'DOC', 'SRF', 'killed'].indexOf(role) < 0) {
-      role = 'fallback';
-    }
 
     return Scaffold(
       body: Padding(
@@ -269,58 +314,19 @@ class _GameScreenState extends State<GameScreen> {
             for (int i = 0; i < game.usersInLobby.length; i++) (
               PlayerFrame(
                 index: i,
-                // videoRenderer: account.token['username'] == game.usersInLobby[i] ? _localVideoRenderer : _remoteVideoRenderer
-                videoRenderer: account.token['username'] == game.usersInLobby[i] ? _localVideoRenderer : _remoteVideoRenderer
+                videoRenderer: account.token['username'] == game.usersInLobby[i] ? _localVideoRenderer : game.rtc[game.usersInLobby[i]]['renderer']
               )
-            ),
-            // Container(
-            //   margin: EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-            //   padding: EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-            //   decoration: BoxDecoration(
-            //     color: Colors.black45,
-            //     borderRadius: BorderRadius.circular(8.0),
-            //   ),
-            //   child: Text(
-            //     // '${game.gameState}\n${game.role}\n${game.showCamera ? 'show cam.' : 'hide cam.'}',
-            //     '${game.gameState}\n${game.role}',
-            //     style: TextStyle(
-            //       // fontSize: 20
-            //     ),
-            //   ),
-            // ),
-            // TextField(
-            //   controller: sdpController,
-            //   keyboardType: TextInputType.multiline,
-            //   maxLines: 4,
-            //   maxLength: TextField.noMaxLength,
-            // ),
-            // ElevatedButton(
-            //   onPressed: _createOffer,
-            //   child: const Text("Offer"),
-            // ),
-            // const SizedBox(
-            //   height: 10,
-            // ),
-            // ElevatedButton(
-            //   onPressed: _createAnswer,
-            //   child: const Text("Answer"),
-            // ),
-            // const SizedBox(
-            //   height: 10,
-            // ),
-            // ElevatedButton(
-            //   onPressed: _setRemoteDescription,
-            //   child: const Text("Set Remote Description"),
-            // ),
-            // const SizedBox(
-            //   height: 10,
-            // ),
-            // ElevatedButton(
-            //   onPressed: _addCandidate,
-            //   child: const Text("Set Candidate"),
-            // ),
+            )
           ],
         )
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: game.giveWord == account.token['username'] ? Colors.black87 : Colors.grey,
+        foregroundColor: Colors.white,
+        onPressed: game.giveWord == account.token['username'] ? _toggleMute : null,
+        child: Icon(
+          _localStream?.getAudioTracks()[0].enabled != null && _localStream!.getAudioTracks()[0].enabled ? Icons.mic : Icons.mic_off
+        ),
       )
     );
   }

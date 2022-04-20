@@ -109,43 +109,7 @@ class _LoginState extends State<Login> {
                   );
                 },
                 child: const Text('Create an Account'),
-              ),
-              TextButton(
-                onPressed: () {
-                  usernameController.text = 'user1';
-                  passwordController.text = 'user1';
-
-                  _onLogin();
-                },
-                child: const Text('user1'),
-              ),
-              TextButton(
-                onPressed: () {
-                  usernameController.text = 'user2';
-                  passwordController.text = 'user2';
-
-                  _onLogin();
-                },
-                child: const Text('user2'),
-              ),
-              TextButton(
-                onPressed: () {
-                  usernameController.text = 'user3';
-                  passwordController.text = 'user3';
-
-                  _onLogin();
-                },
-                child: const Text('user3'),
-              ),
-              TextButton(
-                onPressed: () {
-                  usernameController.text = 'user4';
-                  passwordController.text = 'user4';
-
-                  _onLogin();
-                },
-                child: const Text('user4'),
-              ),
+              )
             ]
           )
         )

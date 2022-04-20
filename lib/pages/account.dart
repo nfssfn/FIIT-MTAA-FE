@@ -24,9 +24,9 @@ class _AccountState extends State<Account> {
     void _onChangePassword() async {
       final response = await account.changePassword(oldPasswordController.text, newPasswordController.text);
 
-      // oldPasswordController.text = '';
-      // newPasswordController.text = '';
-      // repeatPasswordController.text = '';
+      oldPasswordController.text = '';
+      newPasswordController.text = '';
+      repeatPasswordController.text = '';
 
       if (response['status']) {
         showSnackBar(context, 'Successfully changed password');
@@ -40,7 +40,6 @@ class _AccountState extends State<Account> {
 
       if (response['status']) {
 
-        // Timer(Duration(seconds: 5), () => setState(() { }));
         setState(() { });
 
         showSnackBar(context, 'Successfully changed avatar');

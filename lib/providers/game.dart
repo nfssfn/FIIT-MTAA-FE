@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:fiit_mtaa_fe/services/http_interceptor.dart';
 import 'dart:async';
 import 'package:fiit_mtaa_fe/config.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:property_change_notifier/property_change_notifier.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 import 'package:jwt_decode/jwt_decode.dart';
@@ -25,8 +26,17 @@ class GameProvider with PropertyChangeNotifier<String>  {
   String giveWord = '';
   String winTeam = 'CIV';
 
-  dynamic rtcInvite;
-  String rtcInviteFrom = '';
+  Map<String, dynamic> rtc = {
+    // 'TEST-USER': {
+    //   'renderer': RTCVideoRenderer(),
+    //   'peerConnection': null,
+    //   'sdp': null,
+    //   'candidate': null,
+    //   'type': null // listen | send
+    // }
+  };
+  List<dynamic> candidateQeue = [];
+  List<dynamic> sdpQeue = [];
 
   connectToRoom(id) {
     Socket socket = io('${Config.socket}/$id',
@@ -68,9 +78,8 @@ class GameProvider with PropertyChangeNotifier<String>  {
     socket?.emit('game-vote', username);
   }
 
-  sendRtc(String username, String from, session) {
-    // socket?.emit('rtc-transmit', { 'to': [username], 'from': from, 'invite': session });
-    socket?.emit('rtc-transmit-inv', { 'to': [username], 'from': from, 'invite': session });
+  sendRtc(String username, String from, String type, session) {
+    socket?.emit('rtc-transmit', { 'to': [username], 'from': from, 'type': type, 'invite': session });
   }
 
   kickUser(username) {
@@ -94,6 +103,25 @@ class GameProvider with PropertyChangeNotifier<String>  {
     socket.on('game-preparing', (data) {
       print('game-preparing');
       gameState = 'preparing';
+
+      final username = Jwt.parseJwt(httpClient.token)['username'];
+      var listen = true;
+
+      usersInLobby.forEach((user) {
+        if (username == user) {
+          listen = false;
+          return;
+        }
+
+        rtc[user] = {
+          'renderer': RTCVideoRenderer(),
+          'peerConnection': null,
+          'sdp': null,
+          'candidate': null,
+          'type': listen ? 'listen' : 'send' // listen | send
+        };
+      });
+
       notifyListeners();
     });
     socket.on('role-set', (data) {
@@ -127,6 +155,7 @@ class GameProvider with PropertyChangeNotifier<String>  {
       showCamera = [];
       giveWord = '';
       notifyListeners();
+      notifyListeners('hide-all');
     });
     socket.on('game-rtc-show', (data) {
       print('game-rtc-show: ' + data.toString());
@@ -177,13 +206,26 @@ class GameProvider with PropertyChangeNotifier<String>  {
       notifyListeners('game-over');
       leaveRoom();
     });
-    // socket.on('rtc-recieve', (data) {
-    socket.on('rtc-rcv', (data) {
-      print('rtc-rcv: ');
-      rtcInvite = data['invite'];
-      rtcInviteFrom = data['from'];
-      print(rtcInvite);
-      notifyListeners('rtc-rcv');
+    socket.on('rtc-recieve', (data) {
+      print('rtc-rcv ${data['from']} ${data['type']}');
+      final username = data['from'];
+      final value = rtc[username];
+
+      if (data['type'] == 'candidate' && value['candidate'] == null) {
+        value['candidate'] = data['invite'];
+        candidateQeue.add(data['from']);
+        notifyListeners('candidate-rcv');
+      } else if (data['type'] == 'sdp') {
+        value['sdp'] = data['invite'];
+        sdpQeue.add(data['from']);
+        notifyListeners('sdp-rcv');
+      }
+    });
+    socket.on('game-rtc-link', (data) {
+      notifyListeners('start-rtc');
+    });
+    socket.on('rtc-rerender', (data) {
+      notifyListeners();
     });
   }
 
@@ -195,10 +237,11 @@ class GameProvider with PropertyChangeNotifier<String>  {
     isAdmin = false;
     isPrivate = false;
     killed = [];
-    // showCamera = false;
     showCamera = [];
 
     this.socket = null;
+    candidateQeue = [];
+    sdpQeue = [];
   }
 
   Future<Map<String, dynamic>> getGames() async {

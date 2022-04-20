@@ -1,6 +1,8 @@
 import 'package:fiit_mtaa_fe/config.dart';
 import 'package:fiit_mtaa_fe/pages/game_screen.dart';
 import 'package:fiit_mtaa_fe/pages/login.dart';
+import 'package:fiit_mtaa_fe/pages/video_call.dart';
+import 'package:fiit_mtaa_fe/providers/account.dart';
 import 'package:fiit_mtaa_fe/widgets/snack_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -60,13 +62,20 @@ class _GamesState extends State<Games> {
 
   @override
   Widget build(BuildContext context) {
+    AccountProvider account = Provider.of<AccountProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Games List'),
         leading: IconButton(
           icon: const Icon(Icons.logout_rounded),
-          onPressed: () => {
-            Navigator.of(context).popUntil((route) => route.isFirst)
+          onPressed: () {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const Login()),
+              (Route<dynamic> route) => false
+            );
+            account.token = null;
           },
         ),
         actions: <Widget>[
@@ -114,10 +123,6 @@ class _GamesState extends State<Games> {
           children: <Widget>[
             FloatingActionButton.extended(
               onPressed: () {
-                // Navigator.push(
-                //   context,
-                //   MaterialPageRoute(builder: (context) => const GameScreen()),
-                // );
                 showDialog(context: context, builder: (BuildContext context) {
                   return const JoinGameWidget();
                 });
@@ -126,7 +131,6 @@ class _GamesState extends State<Games> {
               // extendedPadding: const EdgeInsetsDirectional.only(start: 65, end: 65),
               backgroundColor: Colors.black87,
               label: const Text('Join'),
-              // label: const Text('game'),
               heroTag: 'join-game'
             ),
             FloatingActionButton.extended(
